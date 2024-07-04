@@ -1,7 +1,9 @@
 # Acknowledgments: https://github.com/tarashakhurana/4d-occ-forecasting
 # Modified by Haisong Liu
+import functools
 import math
 import copy
+import multiprocessing
 import numpy as np
 import torch
 from torch.utils.cpp_extension import load
@@ -11,8 +13,7 @@ from .ray_pq import Metric_RayPQ
 
 
 # Detect the device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 if device.type == 'cpu':
     dvr = load("dvr", sources=["lib/dvr_cpu/dvr.cpp", "lib/dvr_cpu/dvr_cpu.cpp"], verbose=True, extra_cuda_cflags=['-allow-unsupported-compiler'])
 else:
@@ -109,10 +110,10 @@ def process_one_sample(sem_pred, lidar_rays, output_origin, instance_pred=None, 
 
         with torch.no_grad():
             pred_dist, _, coord_index = dvr.render_forward(
-                occ_pred.cuda(),
-                output_origin_render.cuda(),
-                output_points_render.cuda(),
-                output_tindex_render.cuda(),
+                occ_pred.to(device),
+                output_origin_render.to(device),
+                output_points_render.to(device),
+                output_tindex_render.to(device),
                 [1, 16, 200, 200],
                 "test"
             )
@@ -141,6 +142,22 @@ def process_one_sample(sem_pred, lidar_rays, output_origin, instance_pred=None, 
    
     return pred_pcds_t.numpy()
 
+# for pool.starmap when device is cpu
+def process_pred_gt(sem_pred, sem_gt, lidar_origins, lidar_rays, occ_class_names):
+    sem_pred = torch.from_numpy(np.reshape(sem_pred, [200, 200, 16]))
+    sem_gt = torch.from_numpy(np.reshape(sem_gt, [200, 200, 16]))
+
+    pcd_pred = process_one_sample(sem_pred, lidar_rays, lidar_origins, occ_class_names=occ_class_names)
+    pcd_gt = process_one_sample(sem_gt, lidar_rays, lidar_origins, occ_class_names=occ_class_names)
+
+    # evalute on non-free rays
+    valid_mask = (pcd_gt[:, 0].astype(np.int32) != len(occ_class_names) - 1)
+    pcd_pred = pcd_pred[valid_mask]
+    pcd_gt = pcd_gt[valid_mask]
+
+    assert pcd_pred.shape == pcd_gt.shape
+    
+    return pcd_pred, pcd_gt
 
 def calc_rayiou(pcd_pred_list, pcd_gt_list, occ_class_names):
     thresholds = [1, 2, 4]
@@ -180,29 +197,34 @@ def calc_rayiou(pcd_pred_list, pcd_gt_list, occ_class_names):
 
 
 def main_rayiou(sem_pred_list, sem_gt_list, lidar_origin_list, occ_class_names):
-    torch.cuda.empty_cache()
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
 
     # generate lidar rays
     lidar_rays = generate_lidar_rays()
     lidar_rays = torch.from_numpy(lidar_rays)
 
-    pcd_pred_list, pcd_gt_list = [], []
-    for sem_pred, sem_gt, lidar_origins in tqdm(zip(sem_pred_list, sem_gt_list, lidar_origin_list), ncols=50):
-        sem_pred = torch.from_numpy(np.reshape(sem_pred, [200, 200, 16]))
-        sem_gt = torch.from_numpy(np.reshape(sem_gt, [200, 200, 16]))
+    if device.type == 'cuda':
+        pcd_pred_list, pcd_gt_list = [], []
+        for sem_pred, sem_gt, lidar_origins in tqdm(zip(sem_pred_list, sem_gt_list, lidar_origin_list), ncols=50):
 
-        pcd_pred = process_one_sample(sem_pred, lidar_rays, lidar_origins, occ_class_names=occ_class_names)
-        pcd_gt = process_one_sample(sem_gt, lidar_rays, lidar_origins, occ_class_names=occ_class_names)
+            pcd_pred, pcd_gt = process_pred_gt(sem_pred, sem_gt, lidar_origins, lidar_rays, occ_class_names)
+            
+            pcd_pred_list.append(pcd_pred)
+            pcd_gt_list.append(pcd_gt)
 
-        # evalute on non-free rays
-        valid_mask = (pcd_gt[:, 0].astype(np.int32) != len(occ_class_names) - 1)
-        pcd_pred = pcd_pred[valid_mask]
-        pcd_gt = pcd_gt[valid_mask]
+    else:
+        pool = multiprocessing.Pool(multiprocessing.cpu_count())
 
-        assert pcd_pred.shape == pcd_gt.shape
-        pcd_pred_list.append(pcd_pred)
-        pcd_gt_list.append(pcd_gt)
+        iterable_input = zip(sem_pred_list, sem_gt_list, lidar_origin_list)
+        warpped_func = functools.partial(process_pred_gt, lidar_rays=lidar_rays, occ_class_names=occ_class_names)
+        result = pool.starmap(warpped_func, tqdm(iterable_input, total=len(sem_gt_list), ncols=50))
 
+        pool.close()
+        pool.join()
+
+        pcd_pred_list, pcd_gt_list = zip(*result)
+    
     iou_list = calc_rayiou(pcd_pred_list, pcd_gt_list, occ_class_names)
     rayiou = np.nanmean(iou_list)
     rayiou_0 = np.nanmean(iou_list[0])
@@ -225,7 +247,8 @@ def main_rayiou(sem_pred_list, sem_gt_list, lidar_origin_list, occ_class_names):
 
     print(table)
 
-    torch.cuda.empty_cache()
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
 
     return {
         'RayIoU': rayiou,
@@ -236,7 +259,8 @@ def main_rayiou(sem_pred_list, sem_gt_list, lidar_origin_list, occ_class_names):
 
 
 def main_raypq(sem_pred_list, sem_gt_list, inst_pred_list, inst_gt_list, lidar_origin_list, occ_class_names):
-    torch.cuda.empty_cache()
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
 
     eval_metrics_pq = Metric_RayPQ(
         occ_class_names=occ_class_names,
@@ -279,6 +303,7 @@ def main_raypq(sem_pred_list, sem_gt_list, inst_pred_list, inst_gt_list, lidar_o
 
         eval_metrics_pq.add_batch(sem_pred, sem_gt, instances_pred, instances_gt, l1_error)
 
-    torch.cuda.empty_cache()
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
 
     return eval_metrics_pq.count_pq()

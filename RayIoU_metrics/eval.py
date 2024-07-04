@@ -7,8 +7,19 @@ import torch
 from torch.utils.data import DataLoader
 from utils.ray_metrics import main_rayiou
 from utils.ego_pose_dataset import EgoPoseDataset
-from configs.r50_nuimg_704x256_8f import occ_class_names as occ3d_class_names
-from configs.r50_nuimg_704x256_8f_openocc import occ_class_names as openocc_class_names
+
+openocc_class_names = [
+    'car', 'truck', 'trailer', 'bus', 'construction_vehicle',
+    'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone', 'barrier',
+    'driveable_surface', 'other_flat', 'sidewalk',
+    'terrain', 'manmade', 'vegetation', 'free'
+]
+occ3d_class_names = [
+    'others', 'barrier', 'bicycle', 'bus', 'car', 'construction_vehicle',
+    'motorcycle', 'pedestrian', 'traffic_cone', 'trailer', 'truck',
+    'driveable_surface', 'other_flat', 'sidewalk',
+    'terrain', 'manmade', 'vegetation', 'free'
+]
 
 
 def main(args):
@@ -46,21 +57,25 @@ def main(args):
         occ_gts.append(occ_gt)
         occ_preds.append(occ_pred)
     
-    if args.data_type == 'occupancy':
+    if args.data_type == 'occ3d':
         occ_class_names = occ3d_class_names
     elif args.data_type == 'openocc_v2':
         occ_class_names = openocc_class_names
     else:
         raise ValueError
     
-    print(main_rayiou(occ_preds, occ_gts, lidar_origins, occ_class_names=occ_class_names))
+    metrics = main_rayiou(occ_preds, occ_gts, lidar_origins, occ_class_names=occ_class_names)
+
+    print('--- Evaluation Results ---')
+    for k, v in metrics.items():
+        print('%s: %.4f' % (k, v))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-root", type=str, default='../data/nuscenes')
     parser.add_argument("--pred-dir", type=str)
-    parser.add_argument("--data-type", type=str, choices=['occupancy', 'openocc_v2'], default='occupancy')
+    parser.add_argument("--data-type", type=str, choices=['occ3d', 'openocc_v2'], default='occ3d')
     args = parser.parse_args()
 
     torch.random.manual_seed(0)
