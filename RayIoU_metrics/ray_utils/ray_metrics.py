@@ -14,10 +14,10 @@ from .ray_pq import Metric_RayPQ
 
 # Detect the device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-if device.type == 'cpu':
-    dvr = load("dvr", sources=["lib/dvr_cpu/dvr.cpp", "lib/dvr_cpu/dvr_cpu.cpp"], verbose=True, extra_cuda_cflags=['-allow-unsupported-compiler'])
+if torch.cuda.is_available():
+    import dvr_cuda_ops as dvr
 else:
-    dvr = load("dvr", sources=["lib/dvr_cuda/dvr.cpp", "lib/dvr_cuda/dvr.cu"], verbose=True, extra_cuda_cflags=['-allow-unsupported-compiler'])
+    import dvr_cpu_ops as dvr
 
 _pc_range = [-40, -40, -1.0, 40, 40, 5.4]
 _voxel_size = 0.4

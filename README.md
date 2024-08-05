@@ -195,11 +195,13 @@ prediction/your_model
 ├── ...
 ```
 
-3. Run `RayIoU_metrics/eval.py` to evaluate on the RayIoU:
+3. Run `ray_eval.py` to evaluate on the RayIoU:
 
 ```
 cd RayIoU_metrics
-python eval.py --pred-dir prediction/your_model
+python setup.py install
+cd ..
+python ray_eval.py --pred-dir prediction/your_model
 ```
 
 ## Timing

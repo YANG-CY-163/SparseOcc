@@ -3,10 +3,11 @@ import glob
 import mmcv
 import argparse
 import numpy as np
+import pkg_resources
 import torch
 from torch.utils.data import DataLoader
-from utils.ray_metrics import main_rayiou
-from utils.ego_pose_dataset import EgoPoseDataset
+from ray_utils.ray_metrics import main_rayiou
+from ray_utils.ego_pose_dataset import EgoPoseDataset
 
 openocc_class_names = [
     'car', 'truck', 'trailer', 'bus', 'construction_vehicle',
@@ -23,7 +24,8 @@ occ3d_class_names = [
 
 
 def main(args):
-    data_infos = mmcv.load('./ego_infos_val.pkl')['infos']
+    data_path = pkg_resources.resource_filename('ray_utils', 'ego_infos_val.pkl')
+    data_infos = mmcv.load(data_path)['infos']
     gt_filepaths = sorted(glob.glob(os.path.join(args.data_root, args.data_type, '*/*/*.npz')))
 
     # retrieve scene_name
@@ -73,7 +75,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-root", type=str, default='../data/nuscenes')
+    parser.add_argument("--data-root", type=str, default='data/nuscenes')
     parser.add_argument("--pred-dir", type=str)
     parser.add_argument("--data-type", type=str, choices=['occ3d', 'openocc_v2'], default='occ3d')
     args = parser.parse_args()
