@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import find_packages, setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CppExtension
 import torch
 
@@ -27,12 +27,12 @@ ext_modules.append(
 )
 
 setup(
-    name='RayIoU-metrics',
-    version='0.1',
+    name='rayiou_metrics',
+    version='1.0',
     description='A package for calculating ray metrics with CPU and CUDA support.',
-    packages=['ray_utils'],
+    packages=find_packages(),
     package_data={
-        'ray_utils': ['ego_infos_val.pkl']  # Include .pkl in the package
+        'rayiou_metrics': ['ego_infos_val.pkl']  # Include .pkl in the package
     },
     include_package_data=True,
     ext_modules=ext_modules,

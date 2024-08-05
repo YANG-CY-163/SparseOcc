@@ -197,13 +197,22 @@ prediction/your_model
 ├── ...
 ```
 
-3. Run `ray_eval.py` to evaluate on the RayIoU:
+3. Install `rayiou_metrics` package and use `evaluate_metrics` to evaluate on the RayIoU:
 
 ```
-cd RayIoU_metrics
+cd rayiou_metrics
 python setup.py install
-cd ..
-python ray_eval.py --pred-dir prediction/your_model
+```
+
+```
+# usage example:
+from rayiou_metrics.evaluation import evaluate_metrics
+
+gt_dir_root = 'data/nuscenes'
+data_type = 'occ3d'  # or 'openocc_v2'
+pred_dir = prediction/your_model
+
+metrics = evaluate_metrics(gt_dir_root, pred_dir, data_type)
 ```
 
 ## Timing
